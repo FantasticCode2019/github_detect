@@ -1,0 +1,314 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  username      String    @unique
+  displayName   String?
+  avatarUrl     String?
+  role          UserRole  @default(USER)
+  settings      Json      @default("{}")
+  githubId      String?   @unique
+  githubToken   String?
+  refreshToken  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  organizations OrganizationMember[]
+  repositories  RepositoryMember[]
+  whitelists    Whitelist[]
+  notifications Notification[]
+  detections    Detection[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  SUPERADMIN
+  ADMIN
+  USER
+  VIEWER
+}
+
+model Organization {
+  id          String   @id @default(uuid())
+  githubId    String   @unique
+  name        String
+  login       String   @unique
+  avatarUrl   String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  members      OrganizationMember[]
+  repositories Repository[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String           @id @default(uuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  // Relations
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_members")
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model Repository {
+  id                String   @id @default(uuid())
+  githubId          String   @unique
+  name              String
+  fullName          String   @unique
+  description       String?
+  private           Boolean  @default(false)
+  language          String?
+  starsCount        Int      @default(0)
+  forksCount        Int      @default(0)
+  openIssuesCount   Int      @default(0)
+  openPrsCount      Int      @default(0)
+  aiDetectedCount   Int      @default(0)
+  settings          Json     @default("{}")
+  webhookUrl        String?
+  webhookSecret     String?
+  lastSyncedAt      DateTime?
+  organizationId    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  organization Organization?    @relation(fields: [organizationId], references: [id])
+  members      RepositoryMember[]
+  issues       Issue[]
+  pullRequests PullRequest[]
+  detections   Detection[]
+  whitelists   Whitelist[]
+
+  @@map("repositories")
+}
+
+model RepositoryMember {
+  id           String         @id @default(uuid())
+  repositoryId String
+  userId       String
+  role         RepositoryRole
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  // Relations
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, userId])
+  @@map("repository_members")
+}
+
+enum RepositoryRole {
+  OWNER
+  MAINTAINER
+  DEVELOPER
+  VIEWER
+}
+
+model Issue {
+  id              String    @id @default(uuid())
+  githubId        String    @unique
+  number          Int
+  title           String
+  body            String?
+  state           String    @default("open")
+  authorLogin     String
+  authorType      String    @default("User")
+  labels          String[]  @default([])
+  assignees       String[]  @default([])
+  aiDetected      Boolean   @default(false)
+  aiConfidence    Float?
+  commentsCount   Int       @default(0)
+  htmlUrl         String?
+  repositoryId    String
+  closedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  repository Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  detections Detection[]
+  comments   Comment[]
+
+  @@unique([repositoryId, number])
+  @@map("issues")
+}
+
+model PullRequest {
+  id              String    @id @default(uuid())
+  githubId        String    @unique
+  number          Int
+  title           String
+  body            String?
+  state           String    @default("open")
+  authorLogin     String
+  authorType      String    @default("User")
+  headRef         String?
+  baseRef         String?
+  isDraft         Boolean   @default(false)
+  additions       Int       @default(0)
+  deletions       Int       @default(0)
+  changedFiles    Int       @default(0)
+  commits         Int       @default(0)
+  aiDetected      Boolean   @default(false)
+  aiConfidence    Float?
+  merged          Boolean   @default(false)
+  mergeable       Boolean?
+  mergedBy        String?
+  mergedAt        DateTime?
+  closedAt        DateTime?
+  htmlUrl         String?
+  repositoryId    String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  repository Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  detections Detection[]
+  files      PRFile[]
+  comments   Comment[]
+
+  @@unique([repositoryId, number])
+  @@map("pull_requests")
+}
+
+model PRFile {
+  id             String  @id @default(uuid())
+  filename       String
+  status         String
+  additions      Int     @default(0)
+  deletions      Int     @default(0)
+  changes        Int     @default(0)
+  patch          String?
+  aiScore        Float?
+  pullRequestId  String
+
+  // Relations
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+
+  @@map("pr_files")
+}
+
+model Comment {
+  id              String   @id @default(uuid())
+  githubId        String   @unique
+  body            String
+  authorLogin     String
+  aiDetected      Boolean  @default(false)
+  aiConfidence    Float?
+  issueId         String?
+  pullRequestId   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  issue       Issue?       @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  pullRequest PullRequest? @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  detections  Detection[]
+
+  @@map("comments")
+}
+
+model Detection {
+  id              String   @id @default(uuid())
+  targetType      String   // 'issue', 'pr', 'comment', 'code'
+  targetId        String
+  isAiGenerated   Boolean
+  confidenceScore Float
+  indicators      Json     @default("{}")
+  modelVersion    String   @default("v1.0.0")
+  repositoryId    String
+  userId          String?
+  feedbackIsAi    Boolean?
+  feedbackComment String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  issueId        String?
+  pullRequestId  String?
+  commentId      String?
+
+  // Relations
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  issue      Issue?     @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  pullRequest PullRequest? @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  comment    Comment?   @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@map("detections")
+}
+
+model Whitelist {
+  id             String   @id @default(uuid())
+  repositoryId   String
+  githubUsername String
+  note           String?
+  userId         String
+  createdAt      DateTime @default(now())
+
+  // Relations
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, githubUsername])
+  @@map("whitelists")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  type      String
+  title     String
+  message   String?
+  data      Json     @default("{}")
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  userId    String
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model SyncJob {
+  id           String    @id @default(uuid())
+  repositoryId String
+  userId       String?
+  syncType     String    // 'full', 'incremental'
+  status       String    @default("pending") // 'pending', 'running', 'completed', 'failed'
+  startedAt    DateTime?
+  completedAt  DateTime?
+  errorMessage String?
+  stats        Json      @default("{}")
+  createdAt    DateTime  @default(now())
+
+  @@map("sync_jobs")
+}
