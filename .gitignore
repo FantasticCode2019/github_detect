@@ -4,4 +4,4 @@ dist
 server/node_modules
 server/.env
 .env
-.env.local
+.env.local.worktrees/
